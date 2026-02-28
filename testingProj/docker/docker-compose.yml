@@ -1,0 +1,168 @@
+name: jamline
+
+services:
+  ssnd-db:
+    image: postgres:17
+    container_name: ssnd-db
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "5432:5432"
+    volumes:
+      - ../data/postgresql:/var/lib/postgresql/data
+    networks:
+        ssnd:
+          ipv4_address: 172.18.0.4
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8088:80"
+    volumes:
+      - ../data/pgadmin:/var/lib/pgadmin
+    networks:
+        ssnd:
+          ipv4_address: 172.18.0.5
+    depends_on:
+      - ssnd-db
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    image: jamline-backend:dev
+    container_name: jamline-backend
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    env_file:
+      - .env
+    #volumes:
+   #   - C:/Users/manas/Desktop/GitHub Repositories/jamline-projekt/backend:/app
+    depends_on:
+      - ssnd-db
+    networks:
+      ssnd:
+        ipv4_address: 172.18.0.3
+
+  bff:
+    build:
+      context: ../bff
+      dockerfile: ../bff/Dockerfile
+    image: jamline-bff:dev
+    container_name: jamline-bff
+    restart: unless-stopped
+    env_file:
+      - .env
+  #  volumes:
+    #  - C:/Users/manas/Desktop/GitHub Repositories/jamline-projekt/bff:/app
+    ports:
+      - "8082:3000"
+    depends_on:
+      - backend
+    networks:
+      ssnd:
+        ipv4_address: 172.18.0.6
+
+  frontend:
+    build:
+      context: ../osobny-projekt/frontend/maturitnyProj
+      dockerfile: Dockerfile
+    image: jamline-frontend:dev
+    container_name: jamline-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173" #"8080:80" - bez nginx to nepojde 
+  #  volumes:
+   #   - C:/Users/manas/Desktop/GitHub Repositories/jamline-projekt/osobny-projekt/frontend/maturitnyProj:/app
+    depends_on:
+      - bff
+    networks:
+        ssnd:
+          ipv4_address: 172.18.0.2
+  mediasoup-client:
+    build:
+      context: ../MediaSoup_Project/client
+      dockerfile: Dockerfile
+    image: jamline-mediasoup-client:dev
+    container_name: jamline-mediasoup-client
+    restart: unless-stopped
+    ports:
+      - "5175:5175" #vraj tam nema byt  "443:443" "40000-40010:40000-40010/udp", tak tam dam tcp 
+    env_file:
+      - .env
+  #  volumes:
+  #    - C:/Users/manas/Desktop/GitHub Repositories/jamline-projekt/MediaSoup_Project/client:/app
+    depends_on:
+      - backend
+    networks:
+      ssnd:
+        ipv4_address: 172.18.0.7
+
+#  mediasoup-server:
+ #   build:
+  #    context: ../MediaSoup_Project/server
+   #   dockerfile: Dockerfile
+    #image: jamline-mediasoup-server:dev
+    #container_name: jamline-mediasoup-server
+    #restart: unless-stopped
+    #ports:
+    #  - "3000:3000"  #nemoze tam byt vraj 443, ale teraz neviem co s tym 
+    #  - "40000-40010:40000-40010/udp"
+    #env_file:
+    #  - .env
+  #  volumes:
+   #   - C:/Users/manas/Desktop/GitHub Repositories/jamline-projekt/MediaSoup_Project/server:/app
+    #depends_on:
+    #  - backend
+    #networks:
+    #  ssnd:
+    #   ipv4_address: 172.18.0.8
+    #extra_hosts:
+    # - "host.docker.internal:127.0.0.1"
+  media-server:
+      build:
+        context: ../mediaServer/server
+        dockerfile: Dockerfile
+      image: jamline-mediasoup_server:dev
+      container_name: jamline_mediasoup_server
+      restart: unless-stopped
+      ports:
+      - "3001:3000/tcp"
+      - "40000-40100:40000-40100/udp"
+      env_file:
+        - .env
+      depends_on:
+        - backend
+      networks:
+        ssnd:
+          ipv4_address: 172.18.0.8
+ 
+  nginx:
+   image: nginx:latest
+   container_name: clients-reverse-proxy
+   volumes:
+    - ./conf/jamline.conf:/etc/nginx/conf.d/jamline.conf
+    - ./data/letsencrypt:/etc/letsencrypt
+    - ./log/:/var/log/nginx/
+   ports:
+    - 443:443
+    - 80:80
+   restart: unless-stopped
+   depends_on:
+   - bff
+   - frontend
+   - media-server
+   networks:
+    ssnd:
+     ipv4_address: 172.18.0.10
+      
+networks:
+  ssnd:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: "172.18.0.0/16"
